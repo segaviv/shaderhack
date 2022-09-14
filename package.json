@@ -2,7 +2,6 @@
   "name": "shaderhack",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
   "scripts": {
     "start": "parcel index.html",
     "predeploy": "rm -rf dist && parcel build --public-url 'https://segaviv.github.io/shaderhack' index.html",
