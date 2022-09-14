@@ -687,6 +687,21 @@ magicFuncs.set('gammaCorrect', {code:
 `vec4 gammaCorrect(vec4 color) {
   return vec4(pow(color.xyz, vec3(0.4545)), 1.0);
 }`});
+magicFuncs.set('calcAO', {deps: ['map'], code:
+`float map(vec3 p);
+float calcAO(vec3 pos, vec3 nor) {
+	float totao = 0.0;
+  float sc = 1.0;
+  for(int i=0; i<5; i++ ) {
+      float ed = 0.01 + 0.05*float(i);
+      vec3 aopos =  nor * ed + pos;
+      float dd = map( aopos ).x;
+      totao += (ed - dd)*sc;
+      sc *= .75;
+  }
+  return clamp( 1.0 - 4.0*totao, 0.0, 1.0 );
+}
+`});
   }
 
   function initFuncHelp() {
