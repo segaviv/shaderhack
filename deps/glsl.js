@@ -287,20 +287,13 @@ CodeMirror.defineMode("clike", function(config, parserConfig) {
                     "reflect refract matrixCompMult " +
                     "lessThan lessThanEqual greaterThan greaterThanEqual " +
                     "equal notEqual any all not " +
-                    "texture2D texture2DLod texture2DProjLod texture " +
-                    "textureCube textureCubeLod "+
-                    "sdCircle sdBox sdSegment sdSphere smin"),
-    atoms: words("true false " +
-                "gl_FragColor " +
-                "gl_PointCoord " +
-                "gl_Position gl_PointSize " +
-                "gl_FragCoord gl_FrontFacing " +
-                "gl_FragData " +
-                "gl_DepthRangeParameters " +
-                "gl_MaxVertexAttribs gl_MaxVaryingVectors gl_MaxVertexUniformVectors" +
-                "gl_MaxVertexTextureImageUnits gl_MaxTextureImageUnits " +
-                "gl_MaxFragmentUniformVectors " +
-                "gl_MaxDrawBuffers"),
+                    "texture " +
+                    "sdCircle sdBox sdEqTriangle sdTriangle "+
+                    "sdSegment sdSphere smin smax hash hash2 hash3 "+
+                    "vnoise fbm sdfNormal colorize chooseColor raymarch " +
+                    "calcShadow orbitMouseCam rayDir mainLight "+
+                    "backLight min2 vignette gammaCorrect calcAO rotate "),
+    atoms: words("true false "),
     hooks: {"#": cppHook},
     modeProps: {fold: ["brace", "include"]}
   });

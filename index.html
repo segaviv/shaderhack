@@ -486,6 +486,11 @@ float sdBox(vec3 p, vec3 b) {
   float h = max( k-abs(a-b), 0.0 );
   return min( a, b ) - h*h/k*0.25;
 }`});
+magicFuncs.set('smax', {deps: ['smin'], code:
+`float smin(float a, float b, float k);
+float smax(float a, float b, float k) {
+  return -smin(-a, -b, k);
+}`});
     magicFuncs.set('sdSegment', { code:
 `float sdSegment( in vec2 p, in vec2 a, in vec2 b ) {
   vec2 pa = p-a, ba = b-a;
@@ -577,10 +582,12 @@ vec3 sdfNormal(vec3 pos, float eps) {
 			e.xxx*map(pos + e.xxx*eps));
 }`});
     magicFuncs.set('colorize', {
-      deps: ['map2','chooseColor', 'mainLight', 'backLight', 'sdfNormal'], 
+      deps: ['calcAO', 
+      'map2','chooseColor', 'mainLight', 'backLight', 'sdfNormal'], 
       code:
 `vec3 mainLight(vec3 p, vec3 n, vec3 rd);
 vec3 backLight(vec3 p, vec3 n);
+float calcAO(vec3 pos, vec3 nor);
 vec3 sdfNormal(vec3 pos, float eps);
 vec2 map2(vec3 p);
 vec3 chooseColor(vec3 p, vec3 rd, vec3 n, float id);
@@ -589,13 +596,31 @@ vec4 colorize(vec3 p, vec3 rd) {
   vec3 n = sdfNormal(p, 1e-4);
   // Material color.
   vec3 mat = chooseColor(p, rd, n, map2(p).y);
+
   // Apply main light.
   col += mat * mainLight(p, n, rd) * /*float*/ main_light_intensity;
+
+  // Fake ambient occlusion.
+  float ao = calcAO(p, n);
+
   // Apply back light.
-  col += mat * backLight(p, n) * /*float*/ back_light_intensity;
+  col += ao * mat * backLight(p, n) * /*float*/ back_light_intensity;
   return vec4(col, 1.0);
 }
 `});
+magicFuncs.set('rotate', {code:
+`vec3 rotate(vec3 p, vec3 axis, float angle) {
+    axis = normalize(axis);
+    float s = sin(angle);
+    float c = cos(angle);
+    float oc = 1.0 - c;
+    
+    return (mat4(oc * axis.x * axis.x + c,           oc * axis.x * axis.y - axis.z * s,  oc * axis.z * axis.x + axis.y * s,  0.0,
+                oc * axis.x * axis.y + axis.z * s,  oc * axis.y * axis.y + c,           oc * axis.y * axis.z - axis.x * s,  0.0,
+                oc * axis.z * axis.x - axis.y * s,  oc * axis.y * axis.z + axis.x * s,  oc * axis.z * axis.z + c,           0.0,
+                0.0,                                0.0,                                0.0,                                1.0) 
+            * vec4(p, 1.0)).xyz;
+}`});
     magicFuncs.set('chooseColor', {deps: ['hash3', 'map2'], code: 
 `vec3 hash3(float p);
 vec2 map2(vec3 p);
@@ -608,17 +633,16 @@ vec3 chooseColor(vec3 p, vec3 rd, vec3 n, float id) {
 float raymarch(vec3 ro, vec3 rd, float tmin, float tmax) {
   float t = tmin;
   int i = 0;
-  for(; i<512; i++ ) {
+  for(; i<80; i++ ) {
     float dist = map2(ro + t * rd).x;
 
     // Break if we're close enough to the surface.
     if(abs(dist)<(0.15*t/res.x)) break;
 
-    t += dist * 0.5;
+    t += dist * 0.6;
     // Break if we exceeded tmax.
     if( t>tmax ) return -1.0;
   }
-  if (i == 512) { return -1.; }
   return t;
 }`});
 magicFuncs.set('calcShadow', {deps: ['map'], code:
@@ -695,7 +719,7 @@ float calcAO(vec3 pos, vec3 nor) {
   for(int i=0; i<5; i++ ) {
       float ed = 0.01 + 0.05*float(i);
       vec3 aopos =  nor * ed + pos;
-      float dd = map( aopos ).x;
+      float dd = map2( aopos ).x;
       totao += (ed - dd)*sc;
       sc *= .75;
   }
