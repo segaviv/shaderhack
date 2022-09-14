@@ -210,7 +210,7 @@ uniform vec3 mouse;
 `;
   const FRAG_SHARDER_SUFFIX = `
   void main() {
-      vec4 temp;
+      vec4 temp = vec4(0.0);
       mainImage(temp, gl_FragCoord.xy);
       fragColor = vec4(temp.xyz, 1.0);
     }
@@ -223,10 +223,25 @@ uniform vec3 mouse;
 
   const fsSource = 
 `
+vec2 map2(vec3 p) {
+  return min2(vec2(sdBox(p, vec3(0.1, 0.3, 0.1)), 1.0),
+              vec2(
+                sdSphere(p - vec3(0.4, 0.1, 0.2), .1), 2.0));
+}
+
 void mainImage(out vec4 color, in vec2 pix) {
+  color = vec4(1.);
   vec2 p = (pix * 2.0 - res) / res.y;
-  p *= 20.;
-  color = vec4(fbm(p + fbm(p + fbm(p))));
+  vec3 ro, rd;
+  orbitMouseCam(p, vec3(0.), ro, rd);
+  float t = raymarch(ro, rd, 0., 100.);
+  if (t < 0.) {
+    color *= vignette(pix, 0.2);
+    return;
+  }
+  color = colorize(ro + t * rd, rd);
+  color = vec4(pow(color.xyz, vec3(0.4545)), 1.0);
+  color *= vignette(pix, 0.2);
 }`;
 
   var _transitions = [
@@ -438,6 +453,10 @@ void mainImage(out vec4 color, in vec2 pix) {
 `float sdBox(vec2 p, vec2 b) {
   vec2 d = abs(p)-b;
   return length(max(d,0.0)) + min(max(d.x,d.y),0.0);
+}
+float sdBox(vec3 p, vec3 b) {
+  vec3 q = abs(p) - b;
+  return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
 }`});
     magicFuncs.set('sdEqTriangle', { code:
 `float sdEqTriangle( in vec2 p ) {
@@ -448,7 +467,7 @@ void mainImage(out vec4 color, in vec2 pix) {
   p.x -= clamp( p.x, -2.0, 0.0 );
   return -length(p)*sign(p.y);
 }`});
-  magicFuncs.set('sdTriangle', {code:
+    magicFuncs.set('sdTriangle', {code:
 `float sdTriangle(vec2 p, vec2 p0, vec2 p1, vec2 p2 ) {
     vec2 e0 = p1-p0, e1 = p2-p1, e2 = p0-p2;
     vec2 v0 = p -p0, v1 = p -p1, v2 = p -p2;
@@ -463,8 +482,8 @@ void mainImage(out vec4 color, in vec2 pix) {
 }`});
     magicFuncs.set('smin', { code:
 `float smin(float a, float b, float k) {
-  float h = max( k-abs(a-b), 0.0 )/k;
-  return min( a, b ) - h*h*k*0.25;
+  float h = max( k-abs(a-b), 0.0 );
+  return min( a, b ) - h*h/k*0.25;
 }`});
     magicFuncs.set('sdSegment', { code:
 `float sdSegment( in vec2 p, in vec2 a, in vec2 b ) {
@@ -472,11 +491,11 @@ void mainImage(out vec4 color, in vec2 pix) {
   float h = clamp( dot(pa,ba)/dot(ba,ba), 0.0, 1.0 );
   return length( pa - ba*h );
 }`});
-magicFuncs.set('sdSphere', { code:
-`float sdSphere(in vec2 p, float r) {
+    magicFuncs.set('sdSphere', { code:
+`float sdSphere(in vec3 p, float r) {
   return length(p) - r;
 }`});
-magicFuncs.set('hash', { code:
+    magicFuncs.set('hash', { code:
 `float hash(float p) {
   return fract(25625.66*sin(683.12*p));
 }
@@ -486,7 +505,7 @@ float hash(vec2 p) {
 float hash(vec3 p) {
   return fract(87625.123*sin(52.865*p.x+124.63*p.y+672.12*p.z));
 }`});
-magicFuncs.set('hash2', { code:
+    magicFuncs.set('hash2', { code:
 `vec2 hash2(float p) {
   return vec2(fract(82653.124*sin(473.24*p)),
               fract(14253.64*sin(2561.3*p)));
@@ -499,13 +518,18 @@ vec2 hash2(vec3 p) {
   return vec2(fract(65234.23*sin(542.2*p.x+124.3*p.y+643.*p.z)),
               fract(5251.4*sin(423.3*p.x+111.23*p.y+125.3*p.x)));
 }`});
-magicFuncs.set('hash3', { code:
-`vec3 hash3(vec2 p) {
+    magicFuncs.set('hash3', { code:
+`vec3 hash3(float p) {
+  return vec3(fract(14524.12*sin(123.34*p)),
+              fract(51364.16*sin(352.21*p)),
+              fract(96234.55*sin(56.13*p)));
+}
+vec3 hash3(vec2 p) {
   return vec3(fract(14524.12*sin(123.34*p.x+55.1234*p.y)),
               fract(51364.16*sin(352.21*p.x+1413.34*p.y)),
               fract(96234.55*sin(56.13*p.x+235.142*p.y)));
 }`});
-magicFuncs.set('vnoise', {deps: ['hash'], code:
+    magicFuncs.set('vnoise', {deps: ['hash'], code:
 `float vnoise(vec2 p){
   vec2 i = floor(p);
   vec2 f = fract(p);
@@ -516,7 +540,7 @@ magicFuncs.set('vnoise', {deps: ['hash'], code:
       mix(hash(i + vec2(0.0,1.0)), hash(i + vec2(1.0,1.0)), f.x),
       f.y);
 }`});
-magicFuncs.set('fbm', {deps: ['vnoise'], code:
+    magicFuncs.set('fbm', {deps: ['vnoise'], code:
 `float fbm(vec2 p) {
   float res = 0.;
   float amp = 0.5;
@@ -526,6 +550,120 @@ magicFuncs.set('fbm', {deps: ['vnoise'], code:
     p *= 2.;
   }
   return res;
+}`});
+    magicFuncs.set('map2', {code:
+`vec2 map2(vec3 p) {
+  return vec2(1.0, 1.0);
+}
+`});
+    magicFuncs.set('map', {deps: ['map2'], code:
+`vec2 map2(vec3 p);
+float map(vec3 p) {
+  return map2(p).x;
+}
+`});
+    magicFuncs.set('sdfNormal', {deps: ['map'], code:
+`float map(vec3 p);
+vec2 map2(vec3 p);
+vec3 sdfNormal(vec3 pos, float eps) {
+  vec2 e = vec2(0.5773,-0.5773);
+  return normalize(
+      e.xyy*map(pos + e.xyy*eps) + 
+			e.yyx*map(pos + e.yyx*eps) + 
+			e.yxy*map(pos + e.yxy*eps) + 
+			e.xxx*map(pos + e.xxx*eps));
+}`});
+    magicFuncs.set('colorize', {
+      deps: ['hash3', 'mainLight', 'backLight', 'sdfNormal'], 
+      code:
+`vec3 mainLight(vec3 p, vec3 n, vec3 rd);
+vec3 backLight(vec3 p, vec3 n);
+vec3 hash3(float p);
+vec3 sdfNormal(vec3 pos, float eps);
+vec4 colorize(vec3 p, vec3 rd) {
+  vec3 col = vec3(0.);
+  vec3 n = sdfNormal(p, 1e-4);
+  vec3 mat = normalize(hash3(map2(p).y)) * 0.3;
+  col += mat * mainLight(p, n, rd) * /*float*/ main_light_intensity;
+  col += mat * backLight(p, n) * /*float*/ back_light_intensity;
+  return vec4(col, 1.0);
+}
+`});
+    magicFuncs.set('raymarch', {deps: ['map'], code:
+`float raymarch(vec3 ro, vec3 rd, float tmin, float tmax) {
+  float t = tmin;
+  int i = 0;
+  for(; i<512; i++ ) {
+    float dist = map2(ro + t * rd).x;
+
+    // Break if we're close enough to the surface.
+    if(abs(dist)<(0.15*t/res.x)) break;
+
+    t += dist * 0.5;
+    // Break if we exceeded tmax.
+    if( t>tmax ) return -1.0;
+  }
+  if (i == 512) { return -1.; }
+  return t;
+}`});
+magicFuncs.set('calcShadow', {deps: ['map'], code:
+`float calcShadow(vec3 ro, vec3 rd, float tmin, float tmax) {
+  float t = tmin;
+  float shadow = 1.0;
+  for(int i = 0; i<100; i++ ) {
+    float dist = map2(ro + t * rd).x;
+    t += clamp(dist, 0.02, 0.3);
+    shadow = min(shadow, dist / t);
+    // Break if we're close enough to the surface.
+    if(shadow<1e-3 || t > tmax) break;
+  }
+  return clamp(shadow, 0., 1.);
+}`});
+    magicFuncs.set('orbitMouseCam', {code:
+`void orbitMouseCam(vec2 p, vec3 lookat, out vec3 ro, out vec3 rd) {
+  float d = 1. + mouse.z / res.x / 2.;
+  ro = d * vec3(sin(mouse.x / res.x), 0, cos(mouse.x / res.x));
+  ro.y += mouse.y / res.y;
+
+  vec3 up = vec3(0., 1., 0.);
+  vec3 cz = normalize(lookat - ro);
+  vec3 lr = cross(cz, up);
+  vec3 ud = cross(lr, cz);
+
+  rd = normalize( p.x*lr + p.y*ud + 2.5*cz );
+}`});
+    magicFuncs.set('mainLight', {deps: ['calcShadow'], code:
+`vec3 mainLight(vec3 p, vec3 n, vec3 rd) {
+  vec3 ld = normalize(/*vec3*/main_light_dir);
+  // Diffuse.
+  float d = clamp(0.5+0.5*dot(n, ld), 0., 1.);
+  float sh = calcShadow(p, ld, 0.02, 5.);
+  vec3 col = sh * d * /*col*/ main_light_color;
+
+  // Specular.
+  vec3 hal = normalize(ld-rd);
+  float s = clamp(dot(n,hal), 0.0, 1.0);
+  float fre = clamp(dot(-rd,ld), 0.0, 1.0);
+  fre = pow(fre,5.0);
+  s *= s;
+  s *= s;
+  s *= s;
+  col += s*d*/* sha* */fre;
+  return col;
+}`});
+  magicFuncs.set('backLight', { code:
+`vec3 backLight(vec3 p, vec3 n) {
+  float d = clamp(dot(n, - normalize(/*vec3*/main_light_dir)), 0., 1.);
+  return d * /*col*/ back_light_color;
+}`});
+    magicFuncs.set('min2', {code:
+`vec2 min2(vec2 a, vec2 b) {
+  return a.x < b.x? a : b;
+}`});
+magicFuncs.set('vignette', {code:
+`float vignette(vec2 pix, float intensity) {
+  vec2 p = pix / res;
+  return pow(16.0*p.x*p.y*(1.0-p.x)*(1.0-p.y), intensity);
 }`});
   }
 
@@ -595,6 +733,13 @@ magicFuncs.set('fbm', {deps: ['vnoise'], code:
     compilePromise = compile();
     await compilePromise;
     resizeCanvas();
+    gUniforms.get('main_light_color').value = [0.8, 0.8, 0.8];
+    gUniforms.get('back_light_color').value = [0.9, 0.3, 0.3];
+    gUniforms.get('main_light_dir').value = [2.55, 1., 1.6];
+    gUniforms.get('main_light_intensity').value = 7.94;
+    gUniforms.get('back_light_intensity').value = 0.5;
+    onUniformUpdate();
+    createUniformGui();
 
     if (!localStorage.getItem('help_shown')) {
       SnackBar({
@@ -625,8 +770,8 @@ magicFuncs.set('fbm', {deps: ['vnoise'], code:
     return '';
   }
 
-  function extractUniforms() {
-    const uniforms = [...editor.getValue().matchAll(autoUniformRegex)];
+  function extractUniforms(str) {
+    const uniforms = [...str.matchAll(autoUniformRegex)];
     const uniformNames = new Set(uniforms.map(u => u[2]));
     // Remove uniforms that don't exist anymore.
     let deletedVals = [];
@@ -900,11 +1045,12 @@ magicFuncs.set('fbm', {deps: ['vnoise'], code:
 
   async function compile() {
     const res = new Promise((resolve, reject) => {
-      clearSnackbars();
-      extractUniforms();
       const code = editor.getValue();
+      const magicFuncs = addMagicFuncs(code);
+      clearSnackbars();
+      extractUniforms(magicFuncs + code);
       const frag_shader_prefix = FLOAT_PRECISION + FRAG_SHADER_PREFIX
-       + getUniformString() + addMagicFuncs(code);
+       + getUniformString() + magicFuncs;
       const lineShift = frag_shader_prefix.split('\n').length;
       const fShader = frag_shader_prefix + code + FRAG_SHARDER_SUFFIX;
       const shaderProg = initShaderProgram(gl, vsSource, fShader, lineShift);
@@ -1252,7 +1398,7 @@ magicFuncs.set('fbm', {deps: ['vnoise'], code:
   });
 
   canvas.onwheel = ev => {
-    mouse.z += ev.deltaY;
+    mouse.z += ev.shiftKey? 10. * ev.deltaY : ev.deltaY;
     mouseControllers.forEach(c => c.updateDisplay());
     onUniformUpdate();
   };
