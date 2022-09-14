@@ -666,6 +666,21 @@ magicFuncs.set('vignette', {code:
   vec2 p = pix / res;
   return pow(16.0*p.x*p.y*(1.0-p.x)*(1.0-p.y), intensity);
 }`});
+magicFuncs.set('calcAO', {deps: ['map'], code:
+`float map(vec3 p);
+float calcAO(vec3 pos, vec3 nor) {
+	float totao = 0.0;
+  float sc = 1.0;
+  for(int i=0; i<5; i++ ) {
+      float ed = 0.01 + 0.05*float(i);
+      vec3 aopos =  nor * ed + pos;
+      float dd = map( aopos ).x;
+      totao += (ed - dd)*sc;
+      sc *= .75;
+  }
+  return clamp( 1.0 - 4.0*totao, 0.0, 1.0 );
+}
+`});
   }
 
   function initFuncHelp() {
